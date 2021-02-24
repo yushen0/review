@@ -158,15 +158,25 @@
                 3.1 降低资源消耗，通过重复利用已经创建的线程降低创建线程以及销毁线程的消耗
                 3.2 提高响应速度，当任务到达时，任务可以不用等待线程创建就能立即执行
                 3.3 提高线程的可管理性，线程是稀缺资源，如果无限制的创建，不仅会消耗系统资源，还会降低系统的稳定性，使用线程池可以进行统一的分配，调优和监控。
-            4.线程池参数理解
-                4.1 核心线程(corePool)
+            4.线程池7大参数理解
+                4.1 核心线程(corePoolSize)
                     线程池最终执行任务的角色肯定是线程，同时我们也会限制线程的数量，所以我们可以这样理解核心线程，有新任务提交时，首先检查核心线程数，如果核心线程都在工作，而且数量                        已经达到最大核心线程数，则不会继续新建核心线程，而会将任务放入等待队列。
-                4.2 等待队列(workQueue)
+                4.2 等待队列(workQueue(jdk提供四种工作队列：ArrayBlockingQueue、LinkedBlockingQuene、SynchronousQuene、PriorityBlockingQueue))
                     等待队列用于存储当核心线程都处于运行状态时，继续新增的任务。核心线程在执行完当前任务后，会去等待队列拉取任务继续执行，这个队列一般是一个线程安全的阻塞队列，它的                        容量是由开发者根据业务来定制。
-                4.3 非核心线程：
+                4.3 非核心线程(maximumPoolSize)：
                     当等待队列满了，如果当前线程数没有超过最大线程数，则会新建线程执行任务，其实本质上核心线程和非核心线程没有区别。创建出来的线程也没有标识去区分它们是核心的还是非                        核心的，线程池只会去判断已有的线程数（包括核心和非核心）去跟核心线程数和最大线程数比较，来决定下一步的策略。
                 4.4 线程活动保持时间（keepAliveTime）：线程空闲下来之后，保持存活的持续时间，超过这个时间还没有任务执行，该工作线程结束。
-                4.5 饱和策略（RejectedExecutionHandler）：当等待队列已满，线程数也已达最大线程数，线程池会根据饱和策略来执行后续的操作，默认策略是抛弃要加入的任务。
+                4.5 unit 空闲线程存活时间单位
+                    keepAliveTime的计量单位
+                4.6 threadFactory 线程工厂
+                    创建一个新线程时使用的工厂，可以用来设定线程名、是否为daemon线程等等
+                4.7 handler 拒绝策略（RejectedExecutionHandler）：当等待队列已满，线程数也已达最大线程数，线程池会根据饱和策略来执行后续的操作，默认策略是抛弃要加入的任务。
+                    jdk提供了4种拒绝策略
+                        ①CallerRunsPolicy：该策略下，在调用者线程中直接执行被拒绝任务的run方法，除非线程池已经shutdown，则直接抛弃任务
+                        ②AbortPolicy：该策略下，直接丢弃任务，并抛出RejectedExecutionException异常。
+                        ③DiscardPolicy：该策略下，直接丢弃任务，什么都不做。
+                        ④DiscardOldestPolicy：该策略下，抛弃进入队列最早的那个任务，然后尝试把这次拒绝的任务放入队列
+                        
 线程池运作流程图：![线程池运作流程图](https://github.com/yushen0/review/blob/main/images/%E7%BA%BF%E7%A8%8B%E6%B1%A0%E8%BF%90%E4%BD%9C%E6%B5%81%E7%A8%8B%E5%9B%BE.png)
                 
                 当有新任务提交到线程池时，线程池的处理流程如下：
@@ -177,6 +187,38 @@
                 ①线程池的大小：并非越多越好。应根据系统运行的硬件环境以及应用本身的特点来决定线程池的大小。一般来说，如果代码结构合理，线程数与cpu数量相适合即可。如果线程运行时可能                    出现阻塞现象，可响应增加线程池的大小，如果有必要可以采用自适应算法来动态调整线程池的大小，以提高cpu的有效利用率和系统的整体性能。
                 ②并发错误：多线程应用要特别注意并发错误，要从逻辑上保证程序的正确性，注意避免死锁现象的发生。
                 ③线程泄露：这是线程池应用中的一个严重的问题，当任务执行完毕而线程没能返回线程池中就会发生线程泄露现象。
+                
+              5 线程池的三种常用方式：
+                    5.1 Executors.newFixedThreadPool(int) 使用场景： 执行长期的任务，性能好很多
+                            public static ExecutorService newFixedThreadPool(int nThreads) {
+                                    return new ThreadPoolExecutor(nThreads, nThreads,
+                                        0L, TimeUnit.MILLISECONDS,
+                                        new LinkedBlockingQueue<Runnable>());
+                             }
+                         主要特点如下：
+                            创建一个定长线程池，可控制线程最大并发数，超出的线程会在队列中等待。
+                            使用newFixedThreadPool创建的线程池corePoolSize和maximumPoolSize值是相等的，它使用的是LinkedBlockingQueue；
+                    5.2 Executors.newSingleThreadExecutor() 使用场景：一个任务一个任务执行的场景
+                            public static ExecutorService newSingleThreadExecutor() {
+                                     return new FinalizableDelegatedExecutorService(new ThreadPoolExecutor(1, 1,
+                                        0L, TimeUnit.MILLISECONDS,
+                                        new LinkedBlockingQueue<Runnable>()));
+                             }
+                          主要特点如下：
+                            创建一个单线程化的线程池，它只会用唯一的工作线程来执行任务，保证所有任务按顺序执行
+                            使用newSignleThreadExecutor将corePoolSize和maxminumPoolSize都设置为1，它使用的是LinkedBlockingQueue;
+                    5.3 Executors.newCachedThreadPool()   使用场景：短期异步的小程序，或者负载较轻的服务器
+                            public static ExecutorService newCachedThreadPool() {
+                                    return new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                        60L, TimeUnit.SECONDS,
+                                        new SynchronousQueue<Runnable>());
+                             }
+                          主要特点：
+                            创建一个可缓存的线程池，如果线程池长度超过处理需要 ，可灵活回收空闲线程，若无可回收，则新建线程。
+                            使用newCachedThreadPool 将 corePoolSize 设置为 0 ，将maximumPoolSize设置为Integer.MAX_VALUE, 使用的SynchronousQueue也就是说来了任务就创建线程运行，当                                  线程空闲超过60s，就自动销毁线程。
+                    5.4 Executors.newScheduledThreadPool() 创建固定大小的线程，可以延迟或定时的执行任务。
+                    5.5 java8新出的Executors.newWorkStealingPool(int) 使用目前机器上可用的处理器作为它的并行级别
+
 
 17.
         
