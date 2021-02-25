@@ -306,3 +306,71 @@
                                     3、最终标记：需要停顿，可并发执行；
                                     4、筛选标记：
         
+18.java程序常见OOM
+------
+                为什么会出现OOM错误？(OOM都是Error，并非Exception)
+                    1.分配的内存不够用
+                    2.应用占用的瞬时内存过高，GC回收压力过大
+                    3.以用占用的内存过高，并且内存使用后没有释放，导致内存占用率越来越高，且对象引用全是强引用(什么是强引用、软引用、弱引用、虚引用)
+                    
+                OOM Error分类以及出现OOM的原因分析：
+                    1.java.lang.StackOverflowError：栈内存溢出，由于线程请求的栈深度大于虚拟机所允许的最大深度，无法压入新的栈帧，这时可以检查一下代码中是否存在死循环的递归调用。
+                    2.java.lang.OutOfMemoryError: Java heap space：堆内存溢出，堆空间无法给新的对象分配内存空间且GC一次后仍然无法分配足够的空间时会导致堆溢出。（对象太多、太大）
+                    3.java.lang.OutOfMemoryError: Metaspace：元空间内存溢出，在JDK1.8后，Metaspace 代替永久代，存放了以下的信息：虚拟机加载的类的信息、常量池、静态变量、即时编译后                                                              的代码。若不断生成类，往元空间灌，会造成元空间溢出。
+                    4.java.lang.OutOfMemoryError:unable to create natvie thread：无法创建线程错误，高并发服务常见异常，由平台决定的线程可分配数量不能满足当前程序创建的线程，linux                                                                 默认1024个线程，且线程占用没有释放，导致Error抛出。
+                    5.java.lang:OutOfMemoryError: GC overhead limit exceeded:GC回收异常，GC回收时间长时会抛出OutOfMemoryError。过长的定义是，超过98%的时间用来做GC并且回收了不到2%                                                               的堆内存，连续多次GC都只回收了不到2%的极端情况下才会抛出。如果不抛出该Error，会导致GC占用CPU100%，且一直做循环无用功。
+                    6.java.lang.OutOfMemoryError: Direct buffer memory：本地内存溢出，写NIO程序时经常使用ByteBuffer来读取或写入数据，这是一种基于通道和缓冲区的I/O方式，它可以使用                                                                            Native函数直接分配堆外内存，然后通过DirectByteBuffer对象作为这块内存的引用进行操作。这样可以在一些场景中                                                                             显著提高性能，因为避免了在Java堆和Native堆中来回复制数据。
+                                                                        ByteBuffer.allocate() 分配JVM内存，属于GC范围，速度较慢
+                                                                        ByteBuffer.allocateDirect() 分配OS本地内存，不属于GC，速度较快
+                                                                        但如果不断分配本地内存，堆内存很少使用，JVM不需要GC，DirectByteBuffer对象们就不会被回收，这时候，堆内存充                                                                             足，但本地内存很可能使用光了，再次尝试分配本地内存就会出现OOM Error。
+19.强引用、软引用、弱引用、虚引用
+------
+                强引用：存在GCroots根对象引用的对象，GC过程中不会被回收，例如：Person person = new Person();
+                软引用：当内存充足时不会被GC回收，否则就会被GC回收。
+                弱引用：一旦发生GC，就会被回收掉的对象。
+                虚引用：不会被引用，即生来就是被回收的对象（使用场景就是利用引用队列ReferenceQueue构造引用时，当被GC回收掉时，会在引用队列中保留一下，就是被回收的标记）
+                
+20.什么是GCRoots，什么对象会作为GCRoots
+------
+                GC管理的主要区域是Java堆，一般情况下只针对堆进行垃圾回收。方法区、栈和本地方法区不被GC所管理,因而选择这些区域内的对象作为GC roots,被GC roots引用的对象不被GC回收
+                在Java语言里，可作为GC Roots对象的包括如下几种：
+                        1.虚拟机栈(栈桢中的本地变量表)中的引用的对象 
+                        2.方法区中的类静态属性引用的对象 
+                        3.方法区中的常量引用的对象 
+                        4.本地方法栈中JNI的引用的对象
+                GCRoot的种类如下：
+                        1.Class - 由系统类加载器(system class loader)加载的对象，这些类是不能够被回收的，他们可以以静态字段的方式保存持有其它对象。我们需要注意的一点就是，通过用户                                   自定义的类加载器加载的类，除非相应的java.lang.Class实例以其它的某种（或多种）方式成为roots，否则它们并不是roots。
+                        2.Thread - 活着的线程
+                        3.Stack Local - Java方法的local变量或参数
+                        4.JNI Local - JNI方法的local变量或参数
+                        5.JNI Global - 全局JNI引用
+                        6.Monitor Used - 用于同步的监控对象
+                        7.Held by JVM - 用于JVM特殊目的由GC保留的对象，但实际上这个与JVM的实现是有关的。可能已知的一些类型是：系统类加载器、一些JVM知道的重要的异常类、一些用于处理                                         异常的预分配对象以及一些自定义的类加载器等。然而，JVM并没有为这些对象提供其它的信息，因此需要去确定哪些是属于"JVM持有"的了。
+                        
+21.LockSupport
+------
+                LockSupport是一个编程工具类，主要是为了阻塞和唤醒线程用的，所有的方法都是静态方法，可以让线程在任意位置阻塞，也可以在任意位置唤醒。
+                            它的内部其实两类主要的方法：park（停车阻塞线程）和unpark（启动唤醒线程）。
+                与wait/notify的区别：
+                    1.wait和notify都是Object中的方法,在调用这两个方法前必须先获得锁对象，但是park不需要获取某个对象的锁就可以锁住线程。
+                    2.notify只能随机选择一个线程唤醒，无法唤醒指定的线程，unpark却可以唤醒一个指定的线程。
+22.AQS
+------
+                AQS：AbstractQuenedSynchronizer抽象的队列式同步器。是除了java自带的synchronized关键字之外的锁机制。
+                AQS的全称为（AbstractQueuedSynchronizer），这个类在java.util.concurrent.locks包
+                
+                AQS的核心思想是，如果被请求的共享资源空闲，则将当前请求资源的线程设置为有效的工作线程，并将共享资源设置为锁定状态，如果被请求的共享资源被占用，那么就需要一套线程阻塞                        等待以及被唤醒时锁分配的机制，这个机制AQS是用CLH队列锁实现的，即将暂时获取不到锁的线程加入到队列中。
+                CLH（Craig，Landin，and Hagersten）队列是一个虚拟的双向队列，虚拟的双向队列即不存在队列实例，仅存在节点之间的关联关系。
+                AQS是将每一条请求共享资源的线程封装成一个CLH锁队列的一个结点（Node），来实现锁的分配。
+                AQS就是基于CLH队列，用volatile修饰共享变量state，线程通过CAS去改变状态符，成功则获取锁成功，失败则进入等待队列，等待被唤醒。
+                
+                AQS是自旋锁：**在等待唤醒的时候，经常会使用自旋（while(!cas())）的方式，不停地尝试获取锁，直到被其他线程获取成功
+                实现了AQS的锁有：自旋锁、互斥锁、读锁写锁、条件产量、信号量、栅栏都是AQS的衍生物
+                
+                AQS 定义了两种资源共享方式：
+                    1.Exclusive：独占，只有一个线程能执行，如ReentrantLock
+                    2.Share：共享，多个线程可以同时执行，如Semaphore、CountDownLatch、ReadWriteLock，CyclicBarrier
+                
+                详细可参考：https://blog.csdn.net/TZ845195485/article/details/109210263
+                
+                
